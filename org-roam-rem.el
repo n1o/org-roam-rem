@@ -22,16 +22,53 @@
 
 (require 'org-element)
 
-(defconst org-roam-rem-type "ORG_ROAM_REM_TYPE")
+(defconst org-roam-rem-type "REM_TYPE")
+(defconst org-roam-rem-type-flat "FLAT")
 
 (defgroup org-roam-rem nil
   "Customizations for org-roam."
   :group 'org)
 
+(cl-defstruct org-roam-rem-card-exclusion start end)
 
-(defun org-roam-rem-init ()
+(defun org-roam-rem-mark()
   "Mark as Rem."
-  (message "%s" (org-element-at-point)))
+        (interactive)
+        (org-set-property org-roam-rem-type org-roam-rem-type-flat)
+        (org-roam-rem--get-flat-note)
+        (message "Here"))
 
+
+(defun org-roam-rem--get-flat-note ()
+  ;;Parse flat rem
+  (let ((nodes '()))
+    (push (org-element-at-point) nodes)
+        (save-excursion
+                (when (org-goto-first-child)
+                  (push (org-element-at-point) nodes)))
+        (message "%s" (reverse nodes))
+         ))
+
+;; :pre-blank 0 :contents-begin 113 :contents-end 471
+;;
+(defun org-roam-rem--note-exclusion (level)
+  (let ((exclusion '()))
+    (save-excursion
+      (when (org-goto-first-child)
+        (let* ((element (org-element-at-point))
+               (child-level (org-element-property :level element))
+               (if (<= child-level level)
+                   (append (org-roam-rem--note-exclusion level) exclusion)
+                 (progn
+                   (let* ((start (org-element-property :contents-begin element))
+                          (end (org-element-property  :contents-end element)))
+                        (push (make-org-roam-rem-card-exclusion :start start :end end)))
+                   (while (org-goto-sibling)
+                     (let* ((sibling  (org-element-at-point))
+                            (start (org-element-property :contents-begin sibling))
+                            (end (org-element-property  :contents-end sibling)))
+                        (push (make-org-roam-rem-card-exclusion :start start :end end)))
+                     )))))))
+    exclusion))
 (provide 'org-roam-rem)
 ;;; org-roam-rem.el ends here
