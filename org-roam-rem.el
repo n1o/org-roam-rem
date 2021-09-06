@@ -21,9 +21,13 @@
 
 
 (require 'org-element)
+(require 'org-roam)
 
-(defconst org-roam-rem-type "REM_TYPE")
-(defconst org-roam-rem-type-flat "FLAT")
+(defconst org-roam-rem-card-levels "REM_LEVELS")
+
+(defcustom org-roam-rem-parent-in-title
+  t
+  "Include parent node title in card title")
 
 (defgroup org-roam-rem nil
   "Customizations for org-roam."
@@ -33,22 +37,68 @@
 
 (defun org-roam-rem--card-exlcusion-from-node (node)
   ;; Get card exclusion form node
+  (when node
+    (message "nod3"))
   (let* ((start (org-element-property :contents-begin node))
          (end (org-element-property :contents-end node)))
   (make-org-roam-rem-card-exclusion :start start :end end)))
 
+
+(defun org-roam-rem--parent ()
+;; ParenT
+        (interactive)
+        (let* ((current (org-element-at-point))
+               (parse-buffer (org-element-parse-buffer 'headline)))
+          (message "parent %s" parse-buffer))
+  )
+
+(defun org-roam-rem--title (org-roam-node node-at-point)
+;; Combine as follows org-roam-node-title -> market-title
+
+  (let ((org-roam-title (org-roam-node-title org-roam-node))
+        (node-title (org-element-property :title node-at-point))
+        (title '(org-roam-title)))
+
+    (when org-roam-rem-parent-in-title
+      (save-excursion
+        ()
+        ))
+
+
+    (concat org-roam-title " -> " node-title)))
+
 (defun org-roam-rem-mark()
   "Mark as Rem."
         (interactive)
-        (org-set-property org-roam-rem-type org-roam-rem-type-flat)
         (let* ((current-node (org-element-at-point))
+               (org-roam-node (org-roam-node-at-point))
+               (card-title (org-roam-rem--title org-roam-node current-node))
                (start (org-element-property :contents-begin current-node))
                (end (org-element-property :contents-end current-node))
-               (exclusion (org-roam-rem--note-exclusion 1)))
-          (message "%s" exclusion))
-        (message "Here"))
+               (levels-to-read (read-from-minibuffer "Levels: "))
+               (current-level (org-element-property :level current-node))
+               (levels (+ (- current-level 1) 1))
+               (exclusion (org-roam-rem--note-exclusion levels))
+               (card (org-roam-rem--fold-exclusion exclusion start end)))
 
-;; :pre-blank 0 :contents-begin 113 :contents-end 471
+         (org-set-property org-roam-rem-card-levels levels-to-read)
+         (message "Title: %s card %s" card-title card)
+         (message "%s" (org-roam-node-at-point))))
+
+
+(defun org-roam-rem--fold-exclusion (exclusions node-start node-end)
+  ;; Fold exclusion into a string
+  (let ((buffer "")
+        (current-start node-start))
+    (dolist (element exclusions buffer)
+      (let* ((start (org-roam-rem-card-exclusion-start element))
+             (end (org-roam-rem-card-exclusion-end element))
+             (buffer-fragment (buffer-substring current-start start)))
+        (setq current-start end)
+        (setq buffer (concat buffer buffer-fragment))))
+     (concat buffer (buffer-substring current-start node-end))))
+
+;;
 ;;
 (defun org-roam-rem--note-exclusion (level)
   ;; Perform breath first search untill we get to level +1 and retrieve ther content start and end
@@ -58,7 +108,8 @@
 
         (let* ((element (org-element-at-point))
                (child-level (org-element-property :level element)))
-               (if (<= child-level level)
+                (message "Level %s" child-level)
+               (if (< child-level level)
                    (setq exclusion (append (org-roam-rem--note-exclusion level) exclusion))
                  (progn
                    (push (org-roam-rem--card-exlcusion-from-node element) exclusion)
