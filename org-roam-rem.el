@@ -31,44 +31,40 @@
 
 (cl-defstruct org-roam-rem-card-exclusion start end)
 
+(defun org-roam-rem--card-exlcusion-from-node (node)
+  ;; Get card exclusion form node
+  (let* ((start (org-element-property :contents-begin node))
+         (end (org-element-property :contents-end node)))
+  (make-org-roam-rem-card-exclusion :start start :end end)))
+
 (defun org-roam-rem-mark()
   "Mark as Rem."
         (interactive)
         (org-set-property org-roam-rem-type org-roam-rem-type-flat)
-        (org-roam-rem--get-flat-note)
+        (let* ((current-node (org-element-at-point))
+               (start (org-element-property :contents-begin current-node))
+               (end (org-element-property :contents-end current-node))
+               (exclusion (org-roam-rem--note-exclusion 1)))
+          (message "%s" exclusion))
         (message "Here"))
-
-
-(defun org-roam-rem--get-flat-note ()
-  ;;Parse flat rem
-  (let ((nodes '()))
-    (push (org-element-at-point) nodes)
-        (save-excursion
-                (when (org-goto-first-child)
-                  (push (org-element-at-point) nodes)))
-        (message "%s" (reverse nodes))
-         ))
 
 ;; :pre-blank 0 :contents-begin 113 :contents-end 471
 ;;
 (defun org-roam-rem--note-exclusion (level)
+  ;; Perform breath first search untill we get to level +1 and retrieve ther content start and end
   (let ((exclusion '()))
     (save-excursion
       (when (org-goto-first-child)
+
         (let* ((element (org-element-at-point))
-               (child-level (org-element-property :level element))
+               (child-level (org-element-property :level element)))
                (if (<= child-level level)
-                   (append (org-roam-rem--note-exclusion level) exclusion)
+                   (setq exclusion (append (org-roam-rem--note-exclusion level) exclusion))
                  (progn
-                   (let* ((start (org-element-property :contents-begin element))
-                          (end (org-element-property  :contents-end element)))
-                        (push (make-org-roam-rem-card-exclusion :start start :end end)))
+                   (push (org-roam-rem--card-exlcusion-from-node element) exclusion)
                    (while (org-goto-sibling)
-                     (let* ((sibling  (org-element-at-point))
-                            (start (org-element-property :contents-begin sibling))
-                            (end (org-element-property  :contents-end sibling)))
-                        (push (make-org-roam-rem-card-exclusion :start start :end end)))
-                     )))))))
+                     (let ((sibling (org-element-at-point)))
+                       (push (org-roam-rem--card-exlcusion-from-node sibling) exclusion))))))))
     exclusion))
 (provide 'org-roam-rem)
 ;;; org-roam-rem.el ends here
