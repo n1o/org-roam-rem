@@ -44,27 +44,22 @@
   (make-org-roam-rem-card-exclusion :start start :end end)))
 
 
-(defun org-roam-rem-parent ()
+(defun org-roam-rem-parent (title)
   (interactive)
-  (message "%s" (org-roam-rem--parent (org-element-at-point))))
+  (let* ((ast (org-element-parse-buffer 'headline))
+         (current-node))
+    (org-element-map ast 'headline
+      (lambda (headline)
+        (let ((current-title (org-element-property :title headline)))
+          (when (string= title current-title))
+          (setq current-node headline)))))
+
+  (message "%s" (org-roam-rem--parent (org-element-at-point) nil)))
+
 
 (defun org-roam-rem--parent (current-node)
 ;; ParenT
-  (let ((curent-title (org-element-property :title current-node))
-        (ancestors '())
-        (parent)
-        (parse-buffer (org-element-parse-buffer 'headline)))
-          (org-element-map parse-buffer 'headline
-            (lambda (headline)
-              (let ((title (org-element-property :title headline)))
-                (when (string= title curent-title)
-                    (setq parent (org-element-property :parent headline))))))
-          (while (parent)
-            (push (org-element-property :title parent) ancestors)
-            (message "acestor %s" ancestors)
-            (setq parent (org-element-property :parent parent)))
-          ancestors))
-
+)
 (defun org-roam-rem--title (org-roam-node node-at-point)
 ;; Combine as follows org-roam-node-title -> market-title
 
