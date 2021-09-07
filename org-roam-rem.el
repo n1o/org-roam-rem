@@ -24,6 +24,7 @@
 (require 'org-roam)
 
 (defconst org-roam-rem-card-levels "REM_LEVELS")
+(defconst org-roam-rem-card-title "CARD_TITLE")
 
 (defcustom org-roam-rem-parent-in-title
   t
@@ -44,36 +45,35 @@
   (make-org-roam-rem-card-exclusion :start start :end end)))
 
 
-(defun org-roam-rem-parent (title)
-  (interactive)
-  (let* ((ast (org-element-parse-buffer 'headline))
-         (current-node))
-    (org-element-map ast 'headline
-      (lambda (headline)
-        (let ((current-title (org-element-property :title headline)))
-          (when (string= title current-title))
-          (setq current-node headline)))))
-
-  (message "%s" (org-roam-rem--parent (org-element-at-point) nil)))
-
-
-(defun org-roam-rem--parent (current-node)
+(defun org-roam-rem--ancestor-path-title (current-node)
 ;; ParenT
-)
-(defun org-roam-rem--title (org-roam-node node-at-point)
+  (let* ((title (org-element-property :title current-node))
+         (ast (org-element-parse-buffer 'headline))
+         (full-title ""))
+    (org-element-map ast 'headline
+      (lambda  (headline)
+        (let ((current-title (org-element-property :title headline)))
+          (when (string= title current-title)
+            (setq full-title (org-roam-rem--title-from-path headline))))))
+    (message full-title)
+    full-title))
+
+(defun org-roam-rem--title-from-path (current-node)
+  ;;Recursivelly get title walking up the ancestor path
+  (if current-node
+      (let ((title (org-element-property :title current-node))
+            (parent (org-element-property :parent current-node)))
+
+        (concat (org-roam-rem--title-from-path parent) " -> " title))
+    ""))
+
+(defun org-roam-rem--title (org-roam-node current-node)
 ;; Combine as follows org-roam-node-title -> market-title
 
-  (let ((org-roam-title (org-roam-node-title org-roam-node))
-        (node-title (org-element-property :title node-at-point))
-        (title '(org-roam-title)))
+  (let* ((org-roam-title (org-roam-node-title org-roam-node))
+        (node-with-parent (org-roam-rem--ancestor-path-title current-node)))
 
-    (when org-roam-rem-parent-in-title
-      (save-excursion
-        ()
-        ))
-
-
-    (concat org-roam-title " -> " node-title)))
+    (concat org-roam-title " -> " node-with-parent)))
 
 (defun org-roam-rem-mark()
   "Mark as Rem."
@@ -90,6 +90,7 @@
                (card (org-roam-rem--fold-exclusion exclusion start end)))
 
          (org-set-property org-roam-rem-card-levels levels-to-read)
+         (org-set-property org-roam-rem-card-title card-title)
          (message "Title: %s card %s" card-title card)
          (message "%s" (org-roam-node-at-point))))
 
