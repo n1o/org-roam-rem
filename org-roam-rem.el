@@ -61,19 +61,29 @@
 (defun org-roam-rem--title-from-path (current-node)
   ;;Recursivelly get title walking up the ancestor path
   (if current-node
-      (let ((title (org-element-property :title current-node))
-            (parent (org-element-property :parent current-node)))
-
-        (concat (org-roam-rem--title-from-path parent) " -> " title))
+      (let* ((title (org-element-property :title current-node))
+            (parent (org-element-property :parent current-node))
+            (parent-title (org-element-property :title parent)))
+        ;; (message "%s" (not (null title)))
+        (if (or (null title) (string-blank-p title))
+            (org-roam-rem--title-from-path parent)
+          (progn
+            (if (not (null parent-title))
+                (concat (org-roam-rem--title-from-path parent) " -> " title)
+                title))))
     ""))
 
 (defun org-roam-rem--title (org-roam-node current-node)
 ;; Combine as follows org-roam-node-title -> market-title
 
-  (let* ((org-roam-title (org-roam-node-title org-roam-node))
-        (node-with-parent (org-roam-rem--ancestor-path-title current-node)))
+  (let ((title
+    (if org-roam-rem-roam-title-in-card-title
+        (concat (org-roam-node-title org-roam-node) " -> ")
+      "")))
 
-    (concat org-roam-title " -> " node-with-parent)))
+    (if org-roam-rem-ancestor-path-card-title
+        (concat title (org-roam-rem--ancestor-path-title current-node))
+        (concat title (org-element-property :title current-node)))))
 
 (defun org-roam-rem-mark()
   "Mark as Rem."
