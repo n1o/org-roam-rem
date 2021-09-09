@@ -47,8 +47,6 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 
 (defun org-roam-rem--card-exlcusion-from-node (node)
   ;; Get card exclusion form node
-  (when node
-    (message "nod3"))
   (let* ((start (org-element-property :contents-begin node))
          (end (org-element-property :contents-end node)))
   (make-org-roam-rem-card-exclusion :start start :end end)))
@@ -371,6 +369,9 @@ The implementation is borrowed and simplified from ox-html."
            (t (throw 'giveup nil)))))
       (funcall oldfun link desc info)))
 
+(defun org-roam-rem--deck-names ()
+  "Get all decks names from Anki."
+  (org-roam-rem---anki-connect-invoke-result "deckNames"))
 
 (provide 'org-roam-rem)
 ;;; org-roam-rem.el ends here
