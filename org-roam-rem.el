@@ -9,7 +9,7 @@
 ;; Version: 0.0.1
 ;; Keywords: abbrev bib c calendar comm convenience data docs emulations extensions faces files frames games hardware help hypermedia i18n internal languages lisp local maint mail matching mouse multimedia news outlines processes terminals tex tools unix vc wp
 ;; Homepage: https://github.com/mbarak/org-roam-rem
-;; Package-Requires: ((emacs "24.3"))
+;; Package-Requires: ((emacs "24.4"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -22,13 +22,13 @@
 
 (require 'org-element)
 (require 'org-roam)
+(require 'subr-x)
 
 (defconst org-roam-rem-card-levels "REM_LEVELS")
 (defconst org-roam-rem-card-title "CARD_TITLE")
 
-(defcustom org-roam-rem-parent-in-title
-  t
-  "Include parent node title in card title")
+(defcustom org-roam-rem-roam-title-in-card-title t "Include parent node title in card title")
+(defcustom org-roam-rem-ancestor-path-card-title t "Include ancestor path in card title")
 
 (defgroup org-roam-rem nil
   "Customizations for org-roam."
