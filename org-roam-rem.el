@@ -9,7 +9,7 @@
 ;; Version: 0.0.1
 ;; Keywords: abbrev bib c calendar comm convenience data docs emulations extensions faces files frames games hardware help hypermedia i18n internal languages lisp local maint mail matching mouse multimedia news outlines processes terminals tex tools unix vc wp
 ;; Homepage: https://github.com/mbarak/org-roam-rem
-;; Package-Requires: ((emacs "24.4"))
+;; Package-Requires: ((emacs "25.1"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -30,6 +30,8 @@
 
 (defconst org-roam-rem-card-levels "REM_LEVELS")
 (defconst org-roam-rem-card-title "CARD_TITLE")
+(defconst org-roam-rem-anki-deck-name "ANKI_DECK_NAME")
+(defconst org-roam-rem-anki-note-id "ANKI_NOTE_ID")
 
 (defcustom org-roam-rem-roam-title-in-card-title t "Include parent node title in card title.")
 (defcustom org-roam-rem-ancestor-path-card-title t "Include ancestor path in card title.")
@@ -44,6 +46,13 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   :group 'org)
 
 (cl-defstruct org-roam-rem-card-exclusion start end)
+
+(defmacro org-roam-rem--anki-connect-invoke-result (&rest args)
+  "Invoke AnkiConnect with ARGS, return the result from response or raise an error."
+  `(let-alist (org-roam-rem--anki-connect-invoke ,@args)
+     (when .error (error .error))
+     .result))
+
 
 (defun org-roam-rem--card-exlcusion-from-node (node)
   ;; Get card exclusion form node
@@ -104,10 +113,12 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                (current-level (org-element-property :level current-node))
                (levels (+ (- current-level 1) 1))
                (exclusion (org-roam-rem--note-exclusion levels))
-               (card (org-roam-rem--fold-exclusion exclusion start end)))
+               (card (org-roam-rem--fold-exclusion exclusion start end))
+               (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp))))
 
          (org-set-property org-roam-rem-card-levels levels-to-read)
          (org-set-property org-roam-rem-card-title card-title)
+         (org-set-property org-roam-rem-anki-deck-name deck)
          (message "Title: %s card %s" card-title card)
          (message "%s" (org-roam-node-at-point))))
 
@@ -371,7 +382,7 @@ The implementation is borrowed and simplified from ox-html."
 
 (defun org-roam-rem--deck-names ()
   "Get all decks names from Anki."
-  (org-roam-rem---anki-connect-invoke-result "deckNames"))
+  (org-roam-rem--anki-connect-invoke-result "deckNames"))
 
 (provide 'org-roam-rem)
 ;;; org-roam-rem.el ends here
