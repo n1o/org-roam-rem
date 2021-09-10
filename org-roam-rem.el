@@ -384,5 +384,18 @@ The implementation is borrowed and simplified from ox-html."
   "Get all decks names from Anki."
   (org-roam-rem--anki-connect-invoke-result "deckNames"))
 
+(define-minor-mode org-roam-rem-mode
+  "org-roam-rem-mode"
+  :lighter "org-roam-rem"
+  (if org-roam-rem-mode (org-roam-rem-setup-minor-mode)
+    (org-roam-rem-teardown-minor-mode)))
+
+(defun org-roam-rem-setup-minor-mode ()
+  "Set up this minor mode."
+  (advice-add 'org-html-link :around #'org-roam-rem--ox-html-link))
+
+(defun org-roam-rem-teardown-minor-mode ()
+  "Tear down this minor mode."
+  (remove-hook 'org-property-allowed-value-functions #'org-roam-rem--get-allowed-values-for-property t))
 (provide 'org-roam-rem)
 ;;; org-roam-rem.el ends here
