@@ -45,6 +45,20 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   "Customizations for org-roam."
   :group 'org)
 
+(defconst org-roam-rem--ox-anki-html-backend
+  (if org-roam-rem-use-math-jax
+      (org-export-create-backend
+       :parent 'html
+       :transcoders '((latex-fragment . org-roam-rem--ox-latex-for-mathjax)
+                      (latex-environment . org-roam-rem--ox-latex-for-mathjax)))
+    (org-export-create-backend
+     :parent 'html
+     :transcoders '((latex-fragment . org-roam-rem--ox-latex)
+                    (latex-environment . org-roam-rem--ox-latex)))))
+
+(defconst org-roam-rem--ox-export-ext-plist
+  '(:with-toc nil :org-roam-rem-mode t))
+
 (cl-defstruct org-roam-rem-card-exclusion start end)
 
 (defmacro org-roam-rem--anki-connect-invoke-result (&rest args)
@@ -101,6 +115,10 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
         (concat title (org-roam-rem--ancestor-path-title current-node))
         (concat title (org-element-property :title current-node)))))
 
+(defun org-roam-rem--as-html (text)
+  ;; Export text as html
+  (org-export-string-as text org-roam-rem--ox-anki-html-backend t org-roam-rem--ox-export-ext-plist))
+
 (defun org-roam-rem-mark()
   "Mark as Rem."
         (interactive)
@@ -114,12 +132,17 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                (levels (+ (- current-level 1) 1))
                (exclusion (org-roam-rem--note-exclusion levels))
                (card (org-roam-rem--fold-exclusion exclusion start end))
-               (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp))))
-
+               (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp)))
+               (Back (org-roam-rem--as-html card))
+               (Front (org-roam-rem--as-html card-title))
+               (note '((deck . ,deck)
+                       (fields . '((Front . ,Front) (Back . ,Back))))))
+          (message "%s" deck)
+         (org-roam-rem--create-note note)
          (org-set-property org-roam-rem-card-levels levels-to-read)
          (org-set-property org-roam-rem-card-title card-title)
          (org-set-property org-roam-rem-anki-deck-name deck)
-         (message "Title: %s card %s" card-title card)
+         (message "Front : %s Back: %s" Front Back)
          (message "%s" (org-roam-node-at-point))))
 
 
@@ -154,6 +177,49 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                      (let ((sibling (org-element-at-point)))
                        (push (org-roam-rem--card-exlcusion-from-node sibling) exclusion))))))))
     exclusion))
+
+(defun org-roam-rem--push-note (note)
+  "Request AnkiConnect for updating or creating NOTE."
+  (if (= (alist-get 'note-id note) -1)
+      (org-roam-rem--create-note note)
+    (org-roam-rem--update-note note)))
+
+(defun org-roam-rem--set-note-id (id)
+  (unless id
+    (error "Note creation failed for unknown reason"))
+  (org-set-property org-roam-rem-anki-note-id (number-to-string id)))
+
+(defun org-roam-rem--anki-connect-invoke-multi (&rest actions)
+  (-zip-with (lambda (result handler)
+               (when-let ((_ (listp result))
+                          (err (alist-get 'error result)))
+                 (error err))
+               (and handler (funcall handler result)))
+             (org-roam-rem--anki-connect-invoke-result
+              "multi" `((actions . ,(mapcar #'car actions))))
+             (mapcar #'cdr actions)))
+
+(defun org-roam-rem--create-note (note)
+  "Request AnkiConnect for creating NOTE."
+  (let ((queue (org-roam-rem--anki-connect-invoke-queue)))
+
+    (funcall queue
+             'addNote
+             `((note . ,(org-roam-rem--anki-connect-map-note note)))
+             #'org-roam-rem--set-note-id)
+
+    (funcall queue)))
+
+(defun org-roam-rem--anki-connect-map-note (note)
+  "Convert NOTE to the form that AnkiConnect accepts."
+  (let-alist note
+    (list (cons "id" .note-id)
+          (cons "deckName" .deck)
+          (cons "fields" .fields)
+          (cons "modelName" "Basic"))))
+          ;; Convert tags to a vector since empty list is identical to nil
+          ;; which will become None in Python, but AnkiConnect requires it
+          ;; to be type of list.
 
 (defun org-roam-rem--anki-connect-action (action &optional params version)
   (let (a)
@@ -224,19 +290,6 @@ The result is the path to the newly stored media file."
          (data . ,content))))
     media-file-name))
 
-(defconst org-roam-rem--ox-anki-html-backend
-  (if org-roam-rem-use-math-jax
-      (org-export-create-backend
-       :parent 'html
-       :transcoders '((latex-fragment . org-roam-rem--ox-latex-for-mathjax)
-                      (latex-environment . org-roam-rem--ox-latex-for-mathjax)))
-    (org-export-create-backend
-     :parent 'html
-     :transcoders '((latex-fragment . org-roam-rem--ox-latex)
-                    (latex-environment . org-roam-rem--ox-latex)))))
-
-(defconst org-roam-rem--ox-export-ext-plist
-  '(:with-toc nil :org-roam-rem-mode t))
 
 (defun org-roam-rem--translate-latex-delimiters (latex-code)
   (catch 'done
