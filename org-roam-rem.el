@@ -120,28 +120,44 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   ;; Export text as html
   (org-export-string-as text org-roam-rem--ox-anki-html-backend t org-roam-rem--ox-export-ext-plist))
 
+(cl-defstruct org-roam-rem title card levels-to-read)
+
+(defun org-roam-rem-new (current-node org-roam-node levels-to-read)
+;; Create new rem
+  (let* ((card-title (org-roam-rem--title org-roam-node current-node))
+         (start (org-element-property :contents-begin current-node))
+         (end (org-element-property :contents-end current-node))
+         (current-level (org-element-property :level current-node))
+         (levels (+ (- current-level 1) levels-to-read))
+         (exclusion (org-roam-rem--note-exclusion levels))
+         (card (org-roam-rem--fold-exclusion exclusion start end)))
+    (make-org-roam-rem :title card-title :card card :levels-to-read levels-to-read)))
+
+(defun org-roam-rem-read (current-node)
+;; Read current node
+  )
 (defun org-roam-rem-mark()
   "Mark as Rem."
         (interactive)
         (let* ((current-node (org-element-at-point))
                (org-roam-node (org-roam-node-at-point))
-               (card-title (org-roam-rem--title org-roam-node current-node))
-               (start (org-element-property :contents-begin current-node))
-               (end (org-element-property :contents-end current-node))
                (levels-to-read (read-from-minibuffer "Levels: "))
-               (current-level (org-element-property :level current-node))
-               (levels (+ (- current-level 1) 1))
-               (exclusion (org-roam-rem--note-exclusion levels))
-               (card (org-roam-rem--fold-exclusion exclusion start end))
                (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp)))
+               (rem (org-roam-new-rem current-node org-roam-node levels-to-read))
                (note (make-org-roam-rem-anki-card
-                      :front (org-roam-rem--as-html card-title)
-                      :back (org-roam-rem--as-html card)
+                      :front (org-roam-rem--as-html (org-roam-rem-title rem))
+                      :back (org-roam-rem--as-html (org-roam-rem-card rem))
                       :deck deck)))
          (org-roam-rem--create-note note)
          (org-set-property org-roam-rem-card-levels levels-to-read)
-         (org-set-property org-roam-rem-card-title card-title)
+         (org-set-property org-roam-rem-card-title (org-roam-rem-title rem))
          (org-set-property org-roam-rem-anki-deck-name deck)))
+
+(defun org-roam-rem-update ()
+  ;; Update existing note
+  (interactive)
+  (let* ())
+)
 
 
 (defun org-roam-rem--fold-exclusion (exclusions node-start node-end)
@@ -166,7 +182,6 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 
         (let* ((element (org-element-at-point))
                (child-level (org-element-property :level element)))
-                (message "Level %s" child-level)
                (if (< child-level level)
                    (setq exclusion (append (org-roam-rem--note-exclusion level) exclusion))
                  (progn
@@ -205,6 +220,16 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
              'addNote
              `((note . ,(org-roam-rem--anki-connect-map-note note)))
              #'org-roam-rem--set-note-id)
+
+    (funcall queue)))
+
+(defun org-roam-rem--update-note (note)
+  "Request AnkiConnect for updating fields and tags of NOTE."
+
+  (let ((queue (org-roam-rem--anki-connect-invoke-queue)))
+    (funcall queue
+             'updateNoteFields
+             `((note . ,(org-roam-rem--anki-connect-map-note note))))
 
     (funcall queue)))
 
