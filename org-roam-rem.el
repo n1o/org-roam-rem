@@ -60,6 +60,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   '(:with-toc nil :org-roam-rem-mode t))
 
 (cl-defstruct org-roam-rem-card-exclusion start end)
+(cl-defstruct org-roam-rem-anki-card front back deck (note-id -1))
 
 (defmacro org-roam-rem--anki-connect-invoke-result (&rest args)
   "Invoke AnkiConnect with ARGS, return the result from response or raise an error."
@@ -133,17 +134,14 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                (exclusion (org-roam-rem--note-exclusion levels))
                (card (org-roam-rem--fold-exclusion exclusion start end))
                (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp)))
-               (Back (org-roam-rem--as-html card))
-               (Front (org-roam-rem--as-html card-title))
-               (note '((deck . ,deck)
-                       (fields . '((Front . ,Front) (Back . ,Back))))))
-          (message "%s" deck)
+               (note (make-org-roam-rem-anki-card
+                      :front (org-roam-rem--as-html card-title)
+                      :back (org-roam-rem--as-html card)
+                      :deck deck)))
          (org-roam-rem--create-note note)
          (org-set-property org-roam-rem-card-levels levels-to-read)
          (org-set-property org-roam-rem-card-title card-title)
-         (org-set-property org-roam-rem-anki-deck-name deck)
-         (message "Front : %s Back: %s" Front Back)
-         (message "%s" (org-roam-node-at-point))))
+         (org-set-property org-roam-rem-anki-deck-name deck)))
 
 
 (defun org-roam-rem--fold-exclusion (exclusions node-start node-end)
@@ -180,7 +178,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 
 (defun org-roam-rem--push-note (note)
   "Request AnkiConnect for updating or creating NOTE."
-  (if (= (alist-get 'note-id note) -1)
+  (if (= (org-roam-rem-anki-card-note-id note) -1)
       (org-roam-rem--create-note note)
     (org-roam-rem--update-note note)))
 
@@ -212,11 +210,14 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 
 (defun org-roam-rem--anki-connect-map-note (note)
   "Convert NOTE to the form that AnkiConnect accepts."
-  (let-alist note
-    (list (cons "id" .note-id)
-          (cons "deckName" .deck)
-          (cons "fields" .fields)
+  (let ((card (list (cons "id" (org-roam-rem-anki-card-note-id note))
+          (cons "deckName" (org-roam-rem-anki-card-deck note))
+          (cons "fields" (list
+                          (cons "Front" (org-roam-rem-anki-card-front note))
+                          (cons "Back" (org-roam-rem-anki-card-back note))))
           (cons "modelName" "Basic"))))
+    (message "%s" card)
+    card))
           ;; Convert tags to a vector since empty list is identical to nil
           ;; which will become None in Python, but AnkiConnect requires it
           ;; to be type of list.
