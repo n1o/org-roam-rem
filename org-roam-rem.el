@@ -133,9 +133,6 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
          (card (org-roam-rem--fold-exclusion exclusion start end)))
     (make-org-roam-rem :title card-title :card card :levels-to-read levels-to-read)))
 
-(defun org-roam-rem-read (current-node)
-;; Read current node
-  )
 (defun org-roam-rem-mark()
   "Mark as Rem."
         (interactive)
@@ -148,7 +145,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                       :front (org-roam-rem--as-html (org-roam-rem-title rem))
                       :back (org-roam-rem--as-html (org-roam-rem-card rem))
                       :deck deck)))
-         (org-roam-rem--create-note note)
+         (org-roam-rem--create-anki-note note)
          (org-set-property org-roam-rem-card-levels levels-to-read)
          (org-set-property org-roam-rem-card-title (org-roam-rem-title rem))
          (org-set-property org-roam-rem-anki-deck-name deck)))
@@ -156,8 +153,17 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 (defun org-roam-rem-update ()
   ;; Update existing note
   (interactive)
-  (let* ())
-)
+  (let* ((current-node (org-element-at-point))
+         (org-roam-node (org-roam-node-at-point))
+         (levels-to-read (org-element-property org-roam-rem-card-levels current-node))
+         (deck (org-element-property org-roam-rem-anki-deck-name current-node))
+         (rem (org-roam-rem-new current-node org-roam-node levels-to-read))
+         (note (make-org-roam-rem-anki-card
+                :front (org-roam-rem--as-html (org-roam-rem-title rem))
+                :back (org-roam-rem--as-html (org-roam-rem-card rem))
+                :deck deck)))
+
+    (org-roam-rem--update-anki-note note)))
 
 
 (defun org-roam-rem--fold-exclusion (exclusions node-start node-end)
@@ -191,47 +197,24 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                        (push (org-roam-rem--card-exlcusion-from-node sibling) exclusion))))))))
     exclusion))
 
-(defun org-roam-rem--push-note (note)
-  "Request AnkiConnect for updating or creating NOTE."
-  (if (= (org-roam-rem-anki-card-note-id note) -1)
-      (org-roam-rem--create-note note)
-    (org-roam-rem--update-note note)))
 
 (defun org-roam-rem--set-note-id (id)
   (unless id
     (error "Note creation failed for unknown reason"))
   (org-set-property org-roam-rem-anki-note-id (number-to-string id)))
 
-(defun org-roam-rem--anki-connect-invoke-multi (&rest actions)
-  (-zip-with (lambda (result handler)
-               (when-let ((_ (listp result))
-                          (err (alist-get 'error result)))
-                 (error err))
-               (and handler (funcall handler result)))
-             (org-roam-rem--anki-connect-invoke-result
-              "multi" `((actions . ,(mapcar #'car actions))))
-             (mapcar #'cdr actions)))
 
-(defun org-roam-rem--create-note (note)
+(defun org-roam-rem--create-anki-note (note)
   "Request AnkiConnect for creating NOTE."
-  (let ((queue (org-roam-rem--anki-connect-invoke-queue)))
+  (let* ((note '((note . ,(org-roam-rem--anki-connect-map-note note))))
+         (action (org-roam-rem--anki-connect-action 'addNote note))
+         (response (org-roam-rem--anki-connect-invoke-result action)))
+    (org-roam-rem--set-note-id response)))
 
-    (funcall queue
-             'addNote
-             `((note . ,(org-roam-rem--anki-connect-map-note note)))
-             #'org-roam-rem--set-note-id)
-
-    (funcall queue)))
-
-(defun org-roam-rem--update-note (note)
-  "Request AnkiConnect for updating fields and tags of NOTE."
-
-  (let ((queue (org-roam-rem--anki-connect-invoke-queue)))
-    (funcall queue
-             'updateNoteFields
-             `((note . ,(org-roam-rem--anki-connect-map-note note))))
-
-    (funcall queue)))
+(defun org-roam-rem--update-anki-note (note)
+  ;;update existing note
+  (let* ((note '((note . ,(org-roam-rem--anki-connect-map-note note))))
+         (action (org-roam-rem--anki-connect-action 'updateNoteFields note)))))
 
 (defun org-roam-rem--anki-connect-map-note (note)
   "Convert NOTE to the form that AnkiConnect accepts."
@@ -255,14 +238,6 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
       (push `(params . ,params) a))
     (push `(action . ,action) a)))
 
-(defun org-roam-rem--anki-connect-invoke-queue ()
-  (let (action-queue)
-    (lambda (&optional action params handler)
-      (if action
-          (push (cons (org-roam-rem--anki-connect-action action params) handler) action-queue)
-        (when action-queue
-          (apply #'org-roam-rem--anki-connect-invoke-multi (nreverse action-queue))
-          (setq action-queue nil))))))
 
 (defun org-roam-rem--anki-connect-invoke (action &optional params)
   "Invoke AnkiConnect with ACTION and PARAMS."
