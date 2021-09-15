@@ -152,9 +152,9 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
         (interactive)
         (let* ((current-node (org-element-at-point))
                (org-roam-node (org-roam-node-at-point))
-               (levels-to-read (string-to-number (read-from-minibuffer "Levels: ")))
+               (levels-to-read (read-from-minibuffer "Levels: "))
                (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp)))
-               (rem (org-roam-rem-new current-node org-roam-node levels-to-read))
+               (rem (org-roam-rem-new current-node org-roam-node (string-to-number levels-to-read)))
                (note (make-org-roam-rem-anki-card
                       :front (org-roam-rem--as-html (org-roam-rem-title rem))
                       :back (org-roam-rem--as-html (org-roam-rem-card rem))
@@ -169,16 +169,20 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   (interactive)
   (let* ((current-node (org-element-at-point))
          (org-roam-node (org-roam-node-at-point))
-         (levels-to-read (org-element-property org-roam-rem-card-levels current-node))
-         (deck (org-element-property org-roam-rem-anki-deck-name current-node))
+         (levels-to-read (string-to-number (org-entry-get nil org-roam-rem-card-levels)))
+         (deck (org-entry-get nil org-roam-rem-anki-deck-name))
+         (note-id (string-to-number (org-entry-get nil org-roam-rem-anki-note-id)))
          (rem (org-roam-rem-new current-node org-roam-node levels-to-read))
          (note (make-org-roam-rem-anki-card
                 :front (org-roam-rem--as-html (org-roam-rem-title rem))
                 :back (org-roam-rem--as-html (org-roam-rem-card rem))
-                :deck deck)))
+                :deck deck
+                :note-id note-id)))
 
-    (message "%s,%s,%s" current-node org-roam-node deck)
-    (org-roam-rem--update-anki-note note)))
+    (org-roam-rem--update-anki-note note)
+    (let ((title (org-roam-rem-title rem)))
+      (org-set-property org-roam-rem-card-title title)
+        (message "%s updated" title))))
 
 
 (defun org-roam-rem--fold-exclusion (exclusions node-start node-end)
@@ -202,7 +206,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
       (when (org-goto-first-child)
 
         (let* ((element (org-element-at-point))
-               (child-level (org-element-property :level element)))
+               (child-level (org-entry-get nil :level element)))
                (if (< child-level level)
                    (setq exclusion (append (org-roam-rem--note-exclusion level) exclusion))
                  (progn
@@ -223,13 +227,14 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   "Request AnkiConnect for creating NOTE."
   (let* ((card (org-roam-rem--anki-connect-map-note note))
          (note (list (cons "note" card)))
+         (action (org-roam-rem--anki-connect-action 'addNote note))
          (response (org-roam-rem--anki-connect-invoke-result 'addNote note)))
     (org-roam-rem--set-note-id response)))
 
 (defun org-roam-rem--update-anki-note (note)
   ;;update existing note
-  (let* ((note '((note . ,(org-roam-rem--anki-connect-map-note note))))
-         (action (org-roam-rem--anki-connect-action 'updateNoteFields note)))))
+  (let* ((note (list (cons "note" (org-roam-rem--anki-connect-map-note note))))
+         (action (org-roam-rem--anki-connect-invoke-result "updateNoteFields" note)))))
 
 (defun org-roam-rem--anki-connect-map-note (note)
   "Convert NOTE to the form that AnkiConnect accepts."
@@ -239,7 +244,6 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                           (cons "Front" (org-roam-rem-anki-card-front note))
                           (cons "Back" (org-roam-rem-anki-card-back note))))
           (cons "modelName" "Basic"))))
-    (message "%s" card)
     card))
           ;; Convert tags to a vector since empty list is identical to nil
           ;; which will become None in Python, but AnkiConnect requires it
@@ -260,7 +264,6 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
         (request-backend 'curl)
         (json-array-type 'list)
         reply err)
-    (message "%s" request-body)
     (let ((response (request (format "http://%s:%s"
                                      org-roam-rem-anki-connect-listening-address
                                      org-roam-rem-anki-connect-listening-port)
@@ -279,9 +282,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
       ;; why here we manually invoke callbacks to receive the result.
       (unless (request-response-done-p response)
         (progn
-          (message "Response %s" response)
-                (request--curl-callback (get-buffer-process (request-response--buffer response)) "finished\n")))
-          )
+          (request--curl-callback (get-buffer-process (request-response--buffer response)) "finished\n"))))
 
     (when err (error "Error communicating with AnkiConnect using cURL: %s" err))
     (or reply (error "Got empty reply from AnkiConnect"))))
