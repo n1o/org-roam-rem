@@ -41,6 +41,20 @@
 See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 (defcustom org-roam-rem-use-math-jax nil "Use Anki's built in MathJax support instead of LaTeX.")
 
+(defconst org-roam-rem--latex-deliminter-map (list (list (cons (format "^%s" (regexp-quote "$$")) "[$$]")
+                                     (cons (format "%s$" (regexp-quote "$$")) "[/$$]"))
+                               (list (cons (format "^%s" (regexp-quote "$")) "[$]")
+                                     (cons (format "%s$" (regexp-quote "$")) "[/$]"))
+                               (list (cons (format "^%s" (regexp-quote "\\(")) "[$]")
+                                     (cons (format "%s$" (regexp-quote "\\)")) "[/$]"))
+                               (list (cons (format "^%s" (regexp-quote "\\[")) "[$$]")
+                                     (cons (format "%s$" (regexp-quote "\\]")) "[/$$]"))))
+
+(defconst org-roam-rem--mathjax-deliminter-map (list (list (cons (format "^%s" (regexp-quote "$$")) "\\[")
+                                     (cons (format "%s$" (regexp-quote "$$")) "\\]"))
+                               (list (cons (format "^%s" (regexp-quote "$")) "\\(")
+                                     (cons (format "%s$" (regexp-quote "$")) "\\)"))))
+
 (defgroup org-roam-rem nil
   "Customizations for org-roam."
   :group 'org)
@@ -138,9 +152,9 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
         (interactive)
         (let* ((current-node (org-element-at-point))
                (org-roam-node (org-roam-node-at-point))
-               (levels-to-read (read-from-minibuffer "Levels: "))
+               (levels-to-read (string-to-number (read-from-minibuffer "Levels: ")))
                (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp)))
-               (rem (org-roam-new-rem current-node org-roam-node levels-to-read))
+               (rem (org-roam-rem-new current-node org-roam-node levels-to-read))
                (note (make-org-roam-rem-anki-card
                       :front (org-roam-rem--as-html (org-roam-rem-title rem))
                       :back (org-roam-rem--as-html (org-roam-rem-card rem))
@@ -163,6 +177,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                 :back (org-roam-rem--as-html (org-roam-rem-card rem))
                 :deck deck)))
 
+    (message "%s,%s,%s" current-node org-roam-node deck)
     (org-roam-rem--update-anki-note note)))
 
 
@@ -206,9 +221,9 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 
 (defun org-roam-rem--create-anki-note (note)
   "Request AnkiConnect for creating NOTE."
-  (let* ((note '((note . ,(org-roam-rem--anki-connect-map-note note))))
-         (action (org-roam-rem--anki-connect-action 'addNote note))
-         (response (org-roam-rem--anki-connect-invoke-result action)))
+  (let* ((card (org-roam-rem--anki-connect-map-note note))
+         (note (list (cons "note" card)))
+         (response (org-roam-rem--anki-connect-invoke-result 'addNote note)))
     (org-roam-rem--set-note-id response)))
 
 (defun org-roam-rem--update-anki-note (note)
@@ -245,7 +260,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
         (request-backend 'curl)
         (json-array-type 'list)
         reply err)
-
+    (message "%s" request-body)
     (let ((response (request (format "http://%s:%s"
                                      org-roam-rem-anki-connect-listening-address
                                      org-roam-rem-anki-connect-listening-port)
@@ -263,7 +278,10 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
       ;; might not be called right away but at a later time, that's
       ;; why here we manually invoke callbacks to receive the result.
       (unless (request-response-done-p response)
-        (request--curl-callback (get-buffer-process (request-response--buffer response)) "finished\n")))
+        (progn
+          (message "Response %s" response)
+                (request--curl-callback (get-buffer-process (request-response--buffer response)) "finished\n")))
+          )
 
     (when err (error "Error communicating with AnkiConnect using cURL: %s" err))
     (or reply (error "Got empty reply from AnkiConnect"))))
@@ -291,40 +309,24 @@ The result is the path to the newly stored media file."
          (data . ,content))))
     media-file-name))
 
+(defun org-roam-rem--translate-latex (latex-code delimiter-map)
+  (catch 'done
+    (let ((matched nil))
+      (save-match-data
+        (dolist (pair delimiter-map)
+          (dolist (delimiter pair)
+            (when (setq matched (string-match (car delimiter) latex-code))
+              (setq latex-code (replace-match (cdr delimiter) t t latex-code))))
+          (when matched (throw 'done latex-code)))))
+    latex-code))
 
 (defun org-roam-rem--translate-latex-delimiters (latex-code)
-  (catch 'done
-    (let ((delimiter-map (list (list (cons (format "^%s" (regexp-quote "$$")) "[$$]")
-                                     (cons (format "%s$" (regexp-quote "$$")) "[/$$]"))
-                               (list (cons (format "^%s" (regexp-quote "$")) "[$]")
-                                     (cons (format "%s$" (regexp-quote "$")) "[/$]"))
-                               (list (cons (format "^%s" (regexp-quote "\\(")) "[$]")
-                                     (cons (format "%s$" (regexp-quote "\\)")) "[/$]"))
-                               (list (cons (format "^%s" (regexp-quote "\\[")) "[$$]")
-                                     (cons (format "%s$" (regexp-quote "\\]")) "[/$$]"))))
-          (matched nil))
-      (save-match-data
-        (dolist (pair delimiter-map)
-          (dolist (delimiter pair)
-            (when (setq matched (string-match (car delimiter) latex-code))
-              (setq latex-code (replace-match (cdr delimiter) t t latex-code))))
-          (when matched (throw 'done latex-code)))))
-    latex-code))
+  ;; trnslate latex
+  (org-roam-rem--translate-latex latex-code org-roam-rem--latex-deliminter-map))
 
 (defun org-roam-rem--translate-latex-delimiters-to-anki-mathjax-delimiters (latex-code)
-  (catch 'done
-    (let ((delimiter-map (list (list (cons (format "^%s" (regexp-quote "$$")) "\\[")
-                                     (cons (format "%s$" (regexp-quote "$$")) "\\]"))
-                               (list (cons (format "^%s" (regexp-quote "$")) "\\(")
-                                     (cons (format "%s$" (regexp-quote "$")) "\\)"))))
-          (matched nil))
-      (save-match-data
-        (dolist (pair delimiter-map)
-          (dolist (delimiter pair)
-            (when (setq matched (string-match (car delimiter) latex-code))
-              (setq latex-code (replace-match (cdr delimiter) t t latex-code))))
-          (when matched (throw 'done latex-code)))))
-    latex-code))
+  ;; translate mathjax
+  (org-roam-rem--translate-latex latex-code org-roam-rem--mathjax-deliminter-map))
 
 (defun org-roam-rem--wrap-latex (content)
   "Wrap CONTENT with Anki-style latex markers."
