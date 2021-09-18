@@ -184,6 +184,30 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
       (org-set-property org-roam-rem-card-title title)
         (message "%s updated" title))))
 
+(defun org-roam-rem--is-rem (pos)
+  ;; Determine if the current node is a rem
+  (let* ((level (org-entry-get pos org-roam-rem-card-levels))
+         (title (org-entry-get pos org-roam-rem-card-title)))
+    (and (not (null level)) (not (null title)))))
+
+(defun org-roam-rem--all-rem-positions-in-doc ()
+  ;; Return all the rem positions in a doc
+  (let* ((positions '()))
+    (org-element-map (org-element-parse-buffer 'headline) 'headline
+        (lambda (headline)
+          (let ((begin (org-element-property :begin headline)))
+            (when (org-roam-rem--is-rem begin)
+                (push begin positions)
+              ))))
+    positions))
+
+(defun org-roam-rem-sync-all ()
+  ;; update all cards
+  (interactive)
+  (let ((positions (org-roam-rem--all-rem-positions-in-doc)))
+    (dolist (position positions)
+      (goto-char position)
+      (org-roam-rem-update))))
 
 (defun org-roam-rem--fold-exclusion (exclusions node-start node-end)
   ;; Fold exclusion into a string
