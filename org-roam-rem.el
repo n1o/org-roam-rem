@@ -73,7 +73,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 (defconst org-roam-rem--ox-export-ext-plist
   '(:with-toc nil :org-roam-rem-mode t))
 
-(cl-defstruct org-roam-rem-card-exclusion start end)
+(cl-defstruct org-roam-rem-card-exclusion start end level)
 (cl-defstruct org-roam-rem-anki-card front back deck (note-id -1))
 
 (defmacro org-roam-rem--anki-connect-invoke-result (&rest args)
@@ -86,8 +86,9 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 (defun org-roam-rem--card-exlcusion-from-node (node)
   ;; Get card exclusion form node
   (let* ((start (org-element-property :contents-begin node))
-         (end (org-element-property :contents-end node)))
-  (make-org-roam-rem-card-exclusion :start start :end end)))
+         (end (org-element-property :contents-end node))
+         (level (org-element-property :level node)))
+  (make-org-roam-rem-card-exclusion :start start :end end :level level)))
 
 
 (defun org-roam-rem--ancestor-path-title (current-node)
@@ -143,7 +144,7 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
          (end (org-element-property :contents-end current-node))
          (current-level (org-element-property :level current-node))
          (levels (+ (- current-level 1) levels-to-read))
-         (exclusion (org-roam-rem--note-exclusion levels))
+         (exclusion (reverse (org-roam-rem--note-exclusion levels)))
          (card (org-roam-rem--fold-exclusion exclusion start end)))
     (make-org-roam-rem :title card-title :card card :levels-to-read levels-to-read)))
 
@@ -155,13 +156,14 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
                (levels-to-read (read-from-minibuffer "Levels: "))
                (deck (completing-read "Choose a deck: " (sort (org-roam-rem--deck-names) #'string-lessp)))
                (rem (org-roam-rem-new current-node org-roam-node (string-to-number levels-to-read)))
+               (title (completing-read "Title: "  nil nil t (org-roam-rem-title rem)))
                (note (make-org-roam-rem-anki-card
-                      :front (org-roam-rem--as-html (org-roam-rem-title rem))
+                      :front (org-roam-rem--as-html title)
                       :back (org-roam-rem--as-html (org-roam-rem-card rem))
                       :deck deck)))
          (org-roam-rem--create-anki-note note)
          (org-set-property org-roam-rem-card-levels levels-to-read)
-         (org-set-property org-roam-rem-card-title (org-roam-rem-title rem))
+         (org-set-property org-roam-rem-card-title title)
          (org-set-property org-roam-rem-anki-deck-name deck)))
 
 (defun org-roam-rem-update ()
@@ -171,18 +173,17 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
          (org-roam-node (org-roam-node-at-point))
          (levels-to-read (string-to-number (org-entry-get nil org-roam-rem-card-levels)))
          (deck (org-entry-get nil org-roam-rem-anki-deck-name))
+         (title (org-entry-get nil org-roam-rem-card-title))
          (note-id (string-to-number (org-entry-get nil org-roam-rem-anki-note-id)))
          (rem (org-roam-rem-new current-node org-roam-node levels-to-read))
          (note (make-org-roam-rem-anki-card
-                :front (org-roam-rem--as-html (org-roam-rem-title rem))
+                :front (org-roam-rem--as-html title)
                 :back (org-roam-rem--as-html (org-roam-rem-card rem))
                 :deck deck
                 :note-id note-id)))
 
     (org-roam-rem--update-anki-note note)
-    (let ((title (org-roam-rem-title rem)))
-      (org-set-property org-roam-rem-card-title title)
-        (message "%s updated" title))))
+    (message "%s updated" title)))
 
 (defun org-roam-rem--is-rem (pos)
   ;; Determine if the current node is a rem
@@ -213,16 +214,20 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
   ;; Fold exclusion into a string
   (let ((buffer "")
         (current-start node-start))
-    (dolist (element exclusions buffer)
+    (dolist (element exclusions)
       (let* ((start (org-roam-rem-card-exclusion-start element))
              (end (org-roam-rem-card-exclusion-end element))
              (buffer-fragment (buffer-substring current-start start)))
+        (message "Start %s end %s Fragment: %s" start end buffer-fragment)
         (setq current-start end)
         (setq buffer (concat buffer buffer-fragment))))
      (concat buffer (buffer-substring current-start node-end))))
 
 ;;
 ;;
+;;
+
+
 (defun org-roam-rem--note-exclusion (level)
   ;; Perform breath first search untill we get to level +1 and retrieve ther content start and end
   (let ((exclusion '()))
@@ -230,8 +235,8 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
       (when (org-goto-first-child)
 
         (let* ((element (org-element-at-point))
-               (child-level (org-entry-get nil :level element)))
-               (if (< child-level level)
+               (child-level (org-element-property :level element)))
+               (if (<= child-level level)
                    (setq exclusion (append (org-roam-rem--note-exclusion level) exclusion))
                  (progn
                    (push (org-roam-rem--card-exlcusion-from-node element) exclusion)
