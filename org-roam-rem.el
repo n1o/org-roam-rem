@@ -99,9 +99,8 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
     (org-element-map ast 'headline
       (lambda  (headline)
         (let ((current-title (org-element-property :title headline)))
-          (when (string= title current-title)
+          (when (and (stringp current-title)  (string= title current-title))
             (setq full-title (org-roam-rem--title-from-path headline))))))
-    (message full-title)
     full-title))
 
 (defun org-roam-rem--title-from-path (current-node)
@@ -121,12 +120,10 @@ See https://apps.ankiweb.net/docs/manual.html#latex-conflicts.")
 
 (defun org-roam-rem--title (org-roam-node current-node)
 ;; Combine as follows org-roam-node-title -> market-title
-
   (let ((title
     (if org-roam-rem-roam-title-in-card-title
         (concat (org-roam-node-title org-roam-node) " -> ")
       "")))
-
     (if org-roam-rem-ancestor-path-card-title
         (concat title (org-roam-rem--ancestor-path-title current-node))
         (concat title (org-element-property :title current-node)))))
